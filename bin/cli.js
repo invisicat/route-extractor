@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import { extractSiteRoutes } from "../dist/index.js";
 import { fileURLToPath } from "url";

@@ -1,6 +1,6 @@
 {
   "name": "route-extractor",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Extract routes from React projects supporting Next.js, Vite, and React Router DOM",
   "module": "index.ts",
   "type": "module",
@@ -13,27 +13,28 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "route-extractor": "./bin/cli.js"
+    "route-extractor": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "bun run --watch index.ts",
     "test": "bun test",
-    "postinstall": "bun run build"
+    "postinstall": "",
+    "prepack": "bun run build && bun build ./bin/cli.js --target=node --outdir=dist"
   },
   "dependencies": {
-    "@babel/parser": "^7.23.0",
-    "@babel/traverse": "^7.23.0",
-    "@babel/types": "^7.23.0",
-    "glob": "^10.3.10",
-    "fs-extra": "^11.1.1"
+    "@babel/parser": "^7.28.3",
+    "@babel/traverse": "^7.28.3",
+    "@babel/types": "^7.28.2",
+    "glob": "^10.4.5",
+    "fs-extra": "^11.3.1"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/fs-extra": "^11.0.4",
     "@types/glob": "^8.1.0",
     "@types/babel__traverse": "^7.28.0",
-    "typescript": "^5"
+    "typescript": "^5.9.2"
   },
   "peerDependencies": {
     "typescript": "^5"
