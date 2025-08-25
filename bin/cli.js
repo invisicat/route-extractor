@@ -206,13 +206,15 @@ async function main() {
   const resolvedPath = resolve(process.cwd(), projectPath);
 
   try {
-    console.log(
-      `${colors.cyan}🔍 Analyzing project at:${colors.reset} ${resolvedPath}\n`
-    );
+    if (!options.json) {
+      console.log(
+        `${colors.cyan}🔍 Analyzing project at:${colors.reset} ${resolvedPath}\n`
+      );
+    }
 
     const result = await extractSiteRoutes(resolvedPath);
 
-    if (options.pretty) {
+    if (options.pretty || !options.json) {
       printResults(result, options);
     } else {
       printResults(result, options);
@@ -223,11 +225,21 @@ async function main() {
       process.exit(1);
     }
   } catch (error) {
-    console.error(
-      `${colors.red}💥 Fatal error:${colors.reset} ${error.message}`
-    );
-    console.error(error.stack);
-    process.exit(1);
+    if (options.json) {
+      const errResult = {
+        framework: { name: "unknown" },
+        routes: [],
+        errors: [error?.message || String(error)],
+      };
+      console.log(JSON.stringify(errResult));
+      process.exit(1);
+    } else {
+      console.error(
+        `${colors.red}💥 Fatal error:${colors.reset} ${error.message}`
+      );
+      console.error(error.stack);
+      process.exit(1);
+    }
   }
 }
 
