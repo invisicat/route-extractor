@@ -1,6 +1,6 @@
 {
   "name": "route-extractor",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Extract routes from React projects supporting Next.js, Vite, and React Router DOM",
   "module": "index.ts",
   "type": "module",

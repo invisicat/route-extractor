@@ -2,7 +2,13 @@ import fs from "fs-extra";
 import path from "path";
 import { glob } from "glob";
 import { parse } from "@babel/parser";
-import traverse, { NodePath } from "@babel/traverse";
+import traverseModule, * as babelTraverse from "@babel/traverse";
+import type { NodePath } from "@babel/traverse";
+const traverse: typeof babelTraverse.default = // Handle ESM/CJS/bundler interop
+  ((traverseModule as any)?.default ??
+    (babelTraverse as any)?.default ??
+    (traverseModule as any) ??
+    (babelTraverse as any)) as any;
 import * as t from "@babel/types";
 
 export interface RouteInfo {
@@ -646,11 +652,8 @@ async function resolveImportPath(
       const extensions = [".tsx", ".ts", ".jsx", ".js"];
       for (const ext of extensions) {
         const fullPath = resolvedPath + ext;
-        try {
-          await Bun.file(fullPath).exists();
+        if (await fs.pathExists(fullPath)) {
           return getRelativePath(fullPath, projectPath);
-        } catch {
-          // File doesn't exist, continue to next extension
         }
       }
       // If no extension found, return the path with .tsx
