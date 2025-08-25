@@ -17,6 +17,8 @@ export interface RouteInfo {
   children?: RouteInfo[];
   dynamic?: boolean;
   catchAll?: boolean;
+  // Resolved component file path relative to project root, if available
+  resolvedComponentPath?: string;
   importedComponent?: {
     name: string;
     path: string;
@@ -141,12 +143,12 @@ async function extractNextJSRoutes(projectPath: string): Promise<RouteInfo[]> {
 
   // Check for App Router (Next.js 13+)
   if (await fs.pathExists(appDir)) {
-    routes.push(...(await extractNextJSAppRoutes(appDir)));
+    routes.push(...(await extractNextJSAppRoutes(appDir, projectPath)));
   }
 
   // Check for Pages Router
   if (await fs.pathExists(pagesDir)) {
-    routes.push(...(await extractNextJSPagesRoutes(pagesDir)));
+    routes.push(...(await extractNextJSPagesRoutes(pagesDir, projectPath)));
   }
 
   return routes;
@@ -155,7 +157,10 @@ async function extractNextJSRoutes(projectPath: string): Promise<RouteInfo[]> {
 /**
  * Extract routes from Next.js App Router
  */
-async function extractNextJSAppRoutes(appDir: string): Promise<RouteInfo[]> {
+async function extractNextJSAppRoutes(
+  appDir: string,
+  projectPath: string
+): Promise<RouteInfo[]> {
   const routes: RouteInfo[] = [];
 
   try {
@@ -172,6 +177,7 @@ async function extractNextJSAppRoutes(appDir: string): Promise<RouteInfo[]> {
         routes.push({
           path: routePath,
           component: relativePath,
+          resolvedComponentPath: path.relative(projectPath, file),
           dynamic: routePath.includes("[") || routePath.includes("..."),
           catchAll: routePath.includes("..."),
         });
@@ -188,7 +194,8 @@ async function extractNextJSAppRoutes(appDir: string): Promise<RouteInfo[]> {
  * Extract routes from Next.js Pages Router
  */
 async function extractNextJSPagesRoutes(
-  pagesDir: string
+  pagesDir: string,
+  projectPath: string
 ): Promise<RouteInfo[]> {
   const routes: RouteInfo[] = [];
 
@@ -206,6 +213,7 @@ async function extractNextJSPagesRoutes(
         routes.push({
           path: routePath,
           component: relativePath,
+          resolvedComponentPath: path.relative(projectPath, file),
           dynamic: routePath.includes("[") || routePath.includes("..."),
           catchAll: routePath.includes("..."),
         });
@@ -488,6 +496,7 @@ async function extractRouteFromJSXElement(
               path: importPath,
               fullPath,
             };
+            routeInfo.resolvedComponentPath = fullPath;
           }
         }
       } else if (
@@ -512,6 +521,7 @@ async function extractRouteFromJSXElement(
               path: importPath,
               fullPath,
             };
+            routeInfo.resolvedComponentPath = fullPath;
           }
         }
       }
@@ -587,6 +597,7 @@ async function extractRouteFromObjectExpression(
             path: importPath,
             fullPath,
           };
+          routeInfo.resolvedComponentPath = fullPath;
         }
       } else if (prop.key.name === "element" && t.isJSXElement(prop.value)) {
         const jsx = prop.value;
@@ -604,6 +615,7 @@ async function extractRouteFromObjectExpression(
               path: importPath,
               fullPath,
             };
+            routeInfo.resolvedComponentPath = fullPath;
           }
         }
       } else if (

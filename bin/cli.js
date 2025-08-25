@@ -103,6 +103,15 @@ function printResults(result, options = {}) {
         );
       }
 
+      if (
+        route.resolvedComponentPath &&
+        route.resolvedComponentPath !== route.component
+      ) {
+        console.log(
+          `   ${colors.dim}📍 Resolved:${colors.reset} ${colors.blue}${route.resolvedComponentPath}${colors.reset}`
+        );
+      }
+
       if (route.importedComponent) {
         console.log(
           `   ${colors.dim}📦 Imported:${colors.reset} ${colors.cyan}${route.importedComponent.name}${colors.reset} from ${colors.yellow}${route.importedComponent.path}${colors.reset}`
