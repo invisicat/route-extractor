@@ -14,6 +14,7 @@ export interface RouteInfo {
   importedComponent?: {
     name: string;
     path: string;
+    fullPath?: string;
   };
 }
 
@@ -312,7 +313,7 @@ async function extractReactRouterRoutes(
 ): Promise<RouteInfo[]> {
   const routes: RouteInfo[] = [];
   const seenRoutes = new Set<string>(); // Track seen routes to avoid duplicates
-  
+
   try {
     const routerFiles = await glob("**/*.{tsx,ts,jsx,js}", {
       cwd: projectPath,
@@ -333,10 +334,10 @@ async function extractReactRouterRoutes(
           content,
           projectPath
         );
-        
+
         // Add routes, avoiding duplicates
         for (const route of fileRoutes) {
-          const routeKey = `${route.path}|${route.component || 'no-component'}`;
+          const routeKey = `${route.path}|${route.component || "no-component"}`;
           if (!seenRoutes.has(routeKey)) {
             seenRoutes.add(routeKey);
             routes.push(route);
@@ -368,20 +369,31 @@ async function extractReactRouterRoutesFromFile(
       plugins: ["jsx", "typescript"],
     });
 
-    // First pass: collect all imports
+    // First pass: collect all imports (default and named)
     traverse(ast, {
       ImportDeclaration(path: NodePath<t.ImportDeclaration>) {
         const source = path.node.source.value;
         path.node.specifiers.forEach((specifier) => {
-          if (t.isImportDefaultSpecifier(specifier) && t.isIdentifier(specifier.local)) {
+          if (
+            t.isImportDefaultSpecifier(specifier) &&
+            t.isIdentifier(specifier.local)
+          ) {
             const componentName = specifier.local.name;
             imports.set(componentName, source);
+          } else if (
+            t.isImportSpecifier(specifier) &&
+            t.isIdentifier(specifier.local)
+          ) {
+            const localName = specifier.local.name;
+            imports.set(localName, source);
           }
         });
       },
     });
 
-    // Second pass: extract routes
+    // Second pass: extract routes (collect promises then resolve)
+    const jsxPromises: Array<Promise<RouteInfo | null>> = [];
+    const routerArrayPromises: Array<Promise<RouteInfo[]>> = [];
     traverse(ast, {
       JSXElement(path: NodePath<t.JSXElement>) {
         const { node } = path;
@@ -390,15 +402,9 @@ async function extractReactRouterRoutesFromFile(
           t.isJSXIdentifier(node.openingElement.name) &&
           node.openingElement.name.name === "Route"
         ) {
-          const routeInfo = await extractRouteFromJSXElement(
-            node,
-            filePath,
-            projectPath,
-            imports
+          jsxPromises.push(
+            extractRouteFromJSXElement(node, filePath, projectPath, imports)
           );
-          if (routeInfo) {
-            routes.push(routeInfo);
-          }
         }
       },
 
@@ -409,15 +415,25 @@ async function extractReactRouterRoutesFromFile(
           t.isIdentifier(node.callee) &&
           node.callee.name === "createBrowserRouter"
         ) {
-          const routerRoutes = extractRoutesFromCreateBrowserRouter(
-            node,
-            filePath,
-            projectPath,
-            imports
+          routerArrayPromises.push(
+            extractRoutesFromCreateBrowserRouter(
+              node,
+              filePath,
+              projectPath,
+              imports
+            )
           );
-          routes.push(...routerRoutes);
         }
       },
+    });
+
+    const jsxResults = await Promise.all(jsxPromises);
+    jsxResults.forEach((ri) => {
+      if (ri) routes.push(ri);
+    });
+    const routerArrays = await Promise.all(routerArrayPromises);
+    routerArrays.forEach((arr) => {
+      routes.push(...arr);
     });
   } catch (error) {
     console.error(`Error parsing file ${filePath}:`, error);
@@ -447,15 +463,50 @@ async function extractRouteFromJSXElement(
         routeInfo.path = attr.value.value;
         routeInfo.dynamic = attr.value.value.includes(":");
         routeInfo.catchAll = attr.value.value.includes("*");
-      } else if (attr.name.name === "component" && t.isIdentifier(attr.value)) {
-        // Track the imported component
-        const componentName = attr.value.name;
-        const importPath = imports.get(componentName);
-        if (importPath) {
-          routeInfo.importedComponent = {
-            name: componentName,
-            path: importPath,
-          };
+      } else if (
+        attr.name.name === "component" &&
+        t.isJSXExpressionContainer(attr.value)
+      ) {
+        const expr = attr.value.expression;
+        if (t.isIdentifier(expr)) {
+          const componentName = expr.name;
+          const importPath = imports.get(componentName);
+          if (importPath) {
+            const fullPath = await resolveImportPath(
+              importPath,
+              filePath,
+              projectPath
+            );
+            routeInfo.importedComponent = {
+              name: componentName,
+              path: importPath,
+              fullPath,
+            };
+          }
+        }
+      } else if (
+        attr.name.name === "element" &&
+        t.isJSXExpressionContainer(attr.value)
+      ) {
+        const expr = attr.value.expression;
+        if (
+          t.isJSXElement(expr) &&
+          t.isJSXIdentifier(expr.openingElement.name)
+        ) {
+          const componentName = expr.openingElement.name.name;
+          const importPath = imports.get(componentName);
+          if (importPath) {
+            const fullPath = await resolveImportPath(
+              importPath,
+              filePath,
+              projectPath
+            );
+            routeInfo.importedComponent = {
+              name: componentName,
+              path: importPath,
+              fullPath,
+            };
+          }
         }
       }
     }
@@ -520,10 +571,34 @@ async function extractRouteFromObjectExpression(
         const componentName = prop.value.name;
         const importPath = imports.get(componentName);
         if (importPath) {
+          const fullPath = await resolveImportPath(
+            importPath,
+            filePath,
+            projectPath
+          );
           routeInfo.importedComponent = {
             name: componentName,
             path: importPath,
+            fullPath,
           };
+        }
+      } else if (prop.key.name === "element" && t.isJSXElement(prop.value)) {
+        const jsx = prop.value;
+        if (t.isJSXIdentifier(jsx.openingElement.name)) {
+          const componentName = jsx.openingElement.name.name;
+          const importPath = imports.get(componentName);
+          if (importPath) {
+            const fullPath = await resolveImportPath(
+              importPath,
+              filePath,
+              projectPath
+            );
+            routeInfo.importedComponent = {
+              name: componentName,
+              path: importPath,
+              fullPath,
+            };
+          }
         }
       } else if (
         prop.key.name === "children" &&
@@ -535,11 +610,17 @@ async function extractRouteFromObjectExpression(
               element !== null && t.isObjectExpression(element)
           )
           .map((element) =>
-            extractRouteFromObjectExpression(element, filePath, projectPath, imports)
+            extractRouteFromObjectExpression(
+              element,
+              filePath,
+              projectPath,
+              imports
+            )
           );
-        
-        routeInfo.children = (await Promise.all(childrenPromises))
-          .filter((route): route is RouteInfo => route !== null);
+
+        routeInfo.children = (await Promise.all(childrenPromises)).filter(
+          (route): route is RouteInfo => route !== null
+        );
       }
     }
   }
@@ -550,15 +631,19 @@ async function extractRouteFromObjectExpression(
 /**
  * Resolve import path to full file path
  */
-async function resolveImportPath(importPath: string, currentFile: string, projectPath: string): Promise<string> {
+async function resolveImportPath(
+  importPath: string,
+  currentFile: string,
+  projectPath: string
+): Promise<string> {
   // Handle relative imports
-  if (importPath.startsWith('.')) {
+  if (importPath.startsWith(".")) {
     const currentDir = path.dirname(currentFile);
     const resolvedPath = path.resolve(currentDir, importPath);
-    
+
     // Add common extensions if the import doesn't have one
     if (!path.extname(importPath)) {
-      const extensions = ['.tsx', '.ts', '.jsx', '.js'];
+      const extensions = [".tsx", ".ts", ".jsx", ".js"];
       for (const ext of extensions) {
         const fullPath = resolvedPath + ext;
         try {
@@ -569,18 +654,18 @@ async function resolveImportPath(importPath: string, currentFile: string, projec
         }
       }
       // If no extension found, return the path with .tsx
-      return getRelativePath(resolvedPath + '.tsx', projectPath);
+      return getRelativePath(resolvedPath + ".tsx", projectPath);
     }
-    
+
     return getRelativePath(resolvedPath, projectPath);
   }
-  
+
   // Handle absolute imports (from src/, etc.)
-  if (importPath.startsWith('/') || importPath.startsWith('src/')) {
+  if (importPath.startsWith("/") || importPath.startsWith("src/")) {
     const resolvedPath = path.resolve(projectPath, importPath);
     return getRelativePath(resolvedPath, projectPath);
   }
-  
+
   // For node_modules imports, just return the import path
   return importPath;
 }
