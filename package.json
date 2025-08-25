@@ -1,9 +1,15 @@
 {
   "name": "route-extractor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Extract routes from React projects supporting Next.js, Vite, and React Router DOM",
   "module": "index.ts",
   "type": "module",
+  "author": "Andy Lyek <andy@lyek.me>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/invisicat/route-extractor"
+  },
+  "license": "GPL-2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
